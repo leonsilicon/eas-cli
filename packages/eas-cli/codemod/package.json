@@ -1,0 +1,13 @@
+{
+  "name": "@leonsilicon/eas-cli-codemod",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "apply:build": "npx --yes codemod@latest jssg run --target ../build/commands/upload.js -l javascript ./codemod.ts && npx --yes codemod@latest jssg run --target ../build/commands/build/index.js -l javascript ./codemod.ts && npx --yes codemod@latest jssg run --target ../build/sentry.js -l javascript ./codemod.ts && npx --yes codemod@latest jssg run --target ../build/build/local.js -l javascript ./codemod.ts && npx --yes codemod@latest jssg run --target ../build/build/runBuildAndSubmit.js -l javascript ./codemod.ts && npx --yes codemod@latest jssg run --target ../build/graphql/mutations/BuildMutation.js -l javascript ./codemod.ts",
+    "test": "npx --yes codemod@latest jssg test -l javascript ./codemod.ts ./@fixtures --strictness loose"
+  },
+  "devDependencies": {
+    "@codemod.com/jssg-types": "^1.6.2"
+  }
+}

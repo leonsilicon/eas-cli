@@ -1,0 +1,30 @@
+version: '1'
+
+# This workflow is normally not executed by the codemod CLI directly — it's
+# wired into the generator package at `configs/patching/generator/_generate-patches.ts`,
+# which uses `bun patch` to spin up an editable copy of eas-cli, runs the JSSG
+# codemod against the affected bundle, then `bun patch --commit`s the result.
+# The workflow node below mirrors that orchestration so users can also run the
+# transformation in isolation against an arbitrary checkout via:
+#
+#   codemod jssg run --target <bundle> -l javascript ./codemod.ts
+#
+# Or against this package's test fixtures via:
+#
+#   bun run test
+nodes:
+  - id: patch-upload-metadata
+    name: 'Patch eas-cli bundle for local-only fork behavior'
+    type: automatic
+    steps:
+      - name: 'Run JSSG codemod'
+        js-ast-grep:
+          js_file: 'codemod.ts'
+          language: 'javascript'
+          include:
+            - 'node_modules/eas-cli/build/commands/upload.js'
+            - 'node_modules/eas-cli/build/commands/build/index.js'
+            - 'node_modules/eas-cli/build/sentry.js'
+            - 'node_modules/eas-cli/build/build/local.js'
+            - 'node_modules/eas-cli/build/build/runBuildAndSubmit.js'
+            - 'node_modules/eas-cli/build/graphql/mutations/BuildMutation.js'

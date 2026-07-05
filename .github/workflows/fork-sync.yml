@@ -1,0 +1,26 @@
+name: Fork Sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 9 * * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Sync main from upstream
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fork Sync
+        uses: tgymnich/fork-sync@v2.0.10
+        with:
+          owner: expo
+          repo: eas-cli
+          head: main
+          base: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+          pr_title: 'Fork Sync: Update from expo/eas-cli'
+          pr_message: 'Sync this fork with upstream expo/eas-cli.'

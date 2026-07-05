@@ -1,0 +1,8 @@
+{
+  "name": "@sanjiapp/dev.improve.sanji.configs.patching.codemods.eas-cli.__tests__",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@sanjiapp/dev.improve.sanji.configs.patching.codemods.eas-cli": "workspace:*"
+  }
+}

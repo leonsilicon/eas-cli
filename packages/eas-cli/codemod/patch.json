@@ -1,0 +1,11 @@
+{
+  "npmPackage": "eas-cli",
+  "bundles": [
+    "build/commands/upload.js",
+    "build/commands/build/index.js",
+    "build/sentry.js",
+    "build/build/local.js",
+    "build/build/runBuildAndSubmit.js",
+    "build/graphql/mutations/BuildMutation.js"
+  ]
+}

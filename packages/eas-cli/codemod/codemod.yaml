@@ -1,0 +1,18 @@
+schema_version: '1.0'
+
+name: 'leonsilicon/eas-cli-local-only-patches'
+version: '0.1.0'
+description: 'Patch eas-cli for Sanji compatibility and disable EAS cloud build creation in @leonsilicon/eas-cli'
+author: 'Leon Silicon'
+license: 'MIT'
+workflow: 'workflow.yaml'
+category: 'patches'
+
+targets:
+  languages: ['javascript']
+
+keywords: ['patches', 'eas-cli', 'expo', 'android', 'dev-client', 'upload', 'local-build']
+
+registry:
+  access: 'private'
+  visibility: 'private'
