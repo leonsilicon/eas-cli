@@ -211,22 +211,22 @@ function transformLocalBuild(source: string): string | null {
     return null;
   }
 
-  const before = `        const spawnPromise = (0, spawn_async_1.default)(command, args, {
-            stdio: options.verbose ? 'inherit' : 'pipe',
-            env: mergedEnv,
-        });`;
-  const after = `        const spawnPromise = (0, spawn_async_1.default)(command, args, {
-            stdio: options.verbose ? 'inherit' : 'pipe',
-            env: mergedEnv,
-            // ${LOCAL_BUILD_NPX_CWD_MARKER}: keep npm/npx outside workspace roots so
-            // root package overrides do not affect the temporary plugin install.
-            cwd: mergedEnv.EAS_LOCAL_BUILD_WORKINGDIR ?? process.cwd(),
-        });`;
-
-  if (!source.includes(before)) {
+  const anchorRe = /^([ \t]*)env: mergedEnv,\n([ \t]*)\}\);/m;
+  const match = anchorRe.exec(source);
+  if (match === null) {
     return null;
   }
-  return source.replace(before, after);
+
+  const propIndent = match[1] ?? '';
+  const closeIndent = match[2] ?? '';
+  const replacement =
+    `${propIndent}env: mergedEnv,\n` +
+    `${propIndent}// ${LOCAL_BUILD_NPX_CWD_MARKER}: keep npm/npx outside workspace roots so\n` +
+    `${propIndent}// root package overrides do not affect the temporary plugin install.\n` +
+    `${propIndent}cwd: mergedEnv.EAS_LOCAL_BUILD_WORKINGDIR ?? process.cwd(),\n` +
+    `${closeIndent}});`;
+
+  return source.replace(anchorRe, replacement);
 }
 
 /**
@@ -340,8 +340,7 @@ function transformBuildCommand(source: string): string | null {
     return null;
   }
 
-  const anchorRe =
-    /^([ \t]*)const flags = this\.sanitizeFlags\(rawFlags\);\n([ \t]*)const \{/m;
+  const anchorRe = /^([ \t]*)const flags = this\.sanitizeFlags\(rawFlags\);\n([ \t]*)const \{/m;
   const match = anchorRe.exec(source);
   if (match === null) {
     return null;

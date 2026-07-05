@@ -147,6 +147,44 @@ jobs:
         working-directory: packages/eas-cli
         run: npm pack --dry-run --ignore-scripts
 
+      - name: Verify npm authentication
+        if: steps.release.outputs.should_publish == 'true' && steps.npm.outputs.already_published != 'true'
+        working-directory: packages/eas-cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "::error::NPM_TOKEN is empty. Add an npm automation token as a GitHub Actions secret named NPM_TOKEN."
+            exit 1
+          fi
+
+          {
+            echo "@leonsilicon:registry=https://registry.npmjs.org/"
+            echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}"
+          } > ~/.npmrc
+
+          NPM_USER="$(npm whoami)"
+          echo "Authenticated to npm as ${NPM_USER}."
+
+          npm access list packages @leonsilicon --json > /tmp/leonsilicon-npm-access.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const access = JSON.parse(fs.readFileSync('/tmp/leonsilicon-npm-access.json', 'utf8'));
+          const leonsiliconPackages = Object.keys(access).filter(packageName =>
+            packageName.startsWith('@leonsilicon/')
+          );
+
+          if (leonsiliconPackages.length === 0) {
+            console.error(
+              '::error::NPM_TOKEN can authenticate, but it cannot list any @leonsilicon packages. Use a token from an npm account or organization that owns the @leonsilicon scope and can create packages.'
+            );
+            process.exit(1);
+          }
+
+          console.log(`NPM_TOKEN can access ${leonsiliconPackages.length} @leonsilicon packages.`);
+          NODE
+
       - name: Publish @leonsilicon/eas-cli
         if: steps.release.outputs.should_publish == 'true' && steps.npm.outputs.already_published != 'true'
         working-directory: packages/eas-cli
@@ -154,5 +192,8 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          {
+            echo "@leonsilicon:registry=https://registry.npmjs.org/"
+            echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}"
+          } > ~/.npmrc
           npm publish --access public --ignore-scripts
