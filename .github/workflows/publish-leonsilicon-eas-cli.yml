@@ -173,23 +173,19 @@ jobs:
           NPM_USER="$(npm whoami)"
           echo "Authenticated to npm as ${NPM_USER}."
 
-          npm access list packages @leonsilicon --json > /tmp/leonsilicon-npm-access.json
-          node - <<'NODE'
+          if npm access list packages @leonsilicon --json > /tmp/leonsilicon-npm-access.json; then
+            node - <<'NODE'
           const fs = require('fs');
           const access = JSON.parse(fs.readFileSync('/tmp/leonsilicon-npm-access.json', 'utf8'));
           const leonsiliconPackages = Object.keys(access).filter(packageName =>
             packageName.startsWith('@leonsilicon/')
           );
 
-          if (leonsiliconPackages.length === 0) {
-            console.error(
-              '::error::NPM_TOKEN can authenticate, but it cannot list any @leonsilicon packages. Use a token from an npm account or organization that owns the @leonsilicon scope and can create packages.'
-            );
-            process.exit(1);
-          }
-
           console.log(`NPM_TOKEN can access ${leonsiliconPackages.length} @leonsilicon packages.`);
           NODE
+          else
+            echo "NPM_TOKEN can authenticate, but cannot list @leonsilicon packages. Continuing because granular publish tokens do not always include org package listing access."
+          fi
 
       - name: Publish @leonsilicon/eas-cli
         if: steps.release.outputs.should_publish == 'true' && steps.npm.outputs.already_published != 'true'
