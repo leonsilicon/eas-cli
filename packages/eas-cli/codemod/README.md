@@ -42,6 +42,9 @@ cd codemod
 yarn apply:build
 ```
 
+`apply:build` runs `_apply-codemod.ts`, a Bun script that applies `codemod.ts`
+to each expected built bundle under `packages/eas-cli/build/`.
+
 ## Run Tests
 
 ```sh

@@ -115,7 +115,7 @@ const LOCAL_BUILD_NPX_CWD_MARKER = 'eas-cli-local-build-npx-cwd';
 
 // Content signature that identifies `build/graphql/mutations/BuildMutation.js`.
 const CLOUD_BUILD_MUTATION_RE =
-  /createAndroidBuildAsync[\s\S]*createIosBuildAsync[\s\S]*createAndroidBuild[\s\S]*createIosBuild/;
+  /createAndroidBuildAsync[\s\S]*createAndroidBuild[\s\S]*createIosBuildAsync[\s\S]*createIosBuild/;
 
 // Idempotency marker for the cloud-build disablement patch.
 const CLOUD_BUILDS_DISABLED_MARKER = '@leonsilicon/eas-cli has Cloud builds disabled';
@@ -315,19 +315,21 @@ function transformRunBuildAndSubmit(source: string): string | null {
     return null;
   }
 
-  const before = `}) {
-    await vcsClient.ensureRepoExistsAsync();`;
-  const after = `}) {
-    if (!flags.localBuildOptions.localBuildMode) {
-        throw new Error(${JSON.stringify(CLOUD_BUILDS_DISABLED_MESSAGE)});
-    }
-
-    await vcsClient.ensureRepoExistsAsync();`;
-
-  if (!source.includes(before)) {
+  const anchorRe = /^([ \t]*)await vcsClient\.ensureRepoExistsAsync\(\);/m;
+  const match = anchorRe.exec(source);
+  if (match === null) {
     return null;
   }
-  return source.replace(before, after);
+
+  const indent = match[1] ?? '';
+  const bodyIndent = `${indent}  `;
+  const replacement =
+    `${indent}if (!flags.localBuildOptions.localBuildMode) {\n` +
+    `${bodyIndent}throw new Error(${JSON.stringify(CLOUD_BUILDS_DISABLED_MESSAGE)});\n` +
+    `${indent}}\n\n` +
+    `${indent}await vcsClient.ensureRepoExistsAsync();`;
+
+  return source.replace(anchorRe, replacement);
 }
 
 /**
@@ -338,18 +340,24 @@ function transformBuildCommand(source: string): string | null {
     return null;
   }
 
-  const before = `        const flags = this.sanitizeFlags(rawFlags);
-        const {`;
-  const after = `        const flags = this.sanitizeFlags(rawFlags);
-        if (!flags.localBuildOptions.localBuildMode) {
-            throw new Error(${JSON.stringify(CLOUD_BUILDS_DISABLED_MESSAGE)});
-        }
-        const {`;
-
-  if (!source.includes(before)) {
+  const anchorRe =
+    /^([ \t]*)const flags = this\.sanitizeFlags\(rawFlags\);\n([ \t]*)const \{/m;
+  const match = anchorRe.exec(source);
+  if (match === null) {
     return null;
   }
-  return source.replace(before, after);
+
+  const indent = match[1] ?? '';
+  const bodyIndent = `${indent}  `;
+  const nextIndent = match[2] ?? indent;
+  const replacement =
+    `${indent}const flags = this.sanitizeFlags(rawFlags);\n` +
+    `${indent}if (!flags.localBuildOptions.localBuildMode) {\n` +
+    `${bodyIndent}throw new Error(${JSON.stringify(CLOUD_BUILDS_DISABLED_MESSAGE)});\n` +
+    `${indent}}\n` +
+    `${nextIndent}const {`;
+
+  return source.replace(anchorRe, replacement);
 }
 
 /**

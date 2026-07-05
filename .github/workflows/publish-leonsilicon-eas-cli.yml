@@ -1,0 +1,158 @@
+name: Publish @leonsilicon/eas-cli
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force:
+        type: boolean
+        required: true
+        default: false
+        description: 'Publish even if this push does not include a vX.Y.Z commit message'
+
+concurrency:
+  group: publish-leonsilicon-eas-cli-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build, patch, and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-mise
+
+      - name: Detect release commit
+        id: release
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force }}
+        run: |
+          set -euo pipefail
+
+          VERSION=""
+          if [[ "$FORCE" == "true" ]]; then
+            VERSION="$(jq -r .version packages/eas-cli/package.json)"
+          else
+            RANGE="$AFTER"
+            if [[ -n "${BEFORE:-}" && "$BEFORE" != "0000000000000000000000000000000000000000" ]]; then
+              RANGE="$BEFORE..$AFTER"
+            fi
+
+            VERSION="$(git log --format=%s "$RANGE" \
+              | sed -nE 's/^v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?)$/\1/p' \
+              | head -1)"
+          fi
+
+          if [[ -z "$VERSION" ]]; then
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "No vX.Y.Z release commit found in this push."
+            exit 0
+          fi
+
+          PACKAGE_VERSION="$(jq -r .version packages/eas-cli/package.json)"
+          if [[ "$VERSION" != "$PACKAGE_VERSION" ]]; then
+            echo "Release commit version ($VERSION) does not match packages/eas-cli/package.json ($PACKAGE_VERSION)."
+            exit 1
+          fi
+
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether version is already published
+        id: npm
+        if: steps.release.outputs.should_publish == 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          if npm view "@leonsilicon/eas-cli@$VERSION" version >/dev/null 2>&1; then
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+            echo "@leonsilicon/eas-cli@$VERSION is already published."
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.release.outputs.should_publish == 'true' && steps.npm.outputs.already_published != 'true'
+        run: yarn install --immutable
+
+      - name: Sync eas-cli agent templates
+        if: steps.release.outputs.should_publish == 'true' && steps.npm.outputs.already_published != 'true'
+        working-directory: packages/eas-cli
+        run: yarn sync-agent-templates
+
+      - name: Build packages
+        if: steps.release.outputs.should_publish == 'true' && steps.npm.outputs.already_published != 'true'
+        run: yarn build
+
+      - name: Generate oclif manifest
+        if: steps.release.outputs.should_publish == 'true' && steps.npm.outputs.already_published != 'true'
+        working-directory: packages/eas-cli
+        run: node ./scripts/prepack.js
+
+      - name: Setup Bun
+        if: steps.release.outputs.should_publish == 'true' && steps.npm.outputs.already_published != 'true'
+        uses: oven-sh/setup-bun@v2
+
+      - name: Apply built-output codemod
+        if: steps.release.outputs.should_publish == 'true' && steps.npm.outputs.already_published != 'true'
+        working-directory: packages/eas-cli/codemod
+        run: bun ./_apply-codemod.ts
+
+      - name: Verify patched build output
+        if: steps.release.outputs.should_publish == 'true' && steps.npm.outputs.already_published != 'true'
+        working-directory: packages/eas-cli
+        run: |
+          set -euo pipefail
+          CLOUD_DISABLED='@leonsilicon/eas-cli has Cloud builds disabled; use the --local flag for local builds'
+
+          grep -F "$CLOUD_DISABLED" build/commands/build/index.js
+          grep -F "$CLOUD_DISABLED" build/build/runBuildAndSubmit.js
+          grep -F "$CLOUD_DISABLED" build/graphql/mutations/BuildMutation.js
+          grep -F 'dev_menu_fab_icon' build/commands/upload.js
+          grep -F 'eas-cli-local-build-npx-cwd' build/build/local.js
+
+          if grep -E 'require\(.*@sentry/node' build/sentry.js; then
+            echo 'build/sentry.js still requires @sentry/node after codemod.'
+            exit 1
+          fi
+
+      - name: Rename package for npm scope
+        if: steps.release.outputs.should_publish == 'true' && steps.npm.outputs.already_published != 'true'
+        working-directory: packages/eas-cli
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const packageJsonPath = 'package.json';
+          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+          packageJson.name = '@leonsilicon/eas-cli';
+          packageJson.publishConfig = {
+            ...(packageJson.publishConfig ?? {}),
+            access: 'public',
+          };
+          fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+          NODE
+
+      - name: Verify package tarball
+        if: steps.release.outputs.should_publish == 'true' && steps.npm.outputs.already_published != 'true'
+        working-directory: packages/eas-cli
+        run: npm pack --dry-run --ignore-scripts
+
+      - name: Publish @leonsilicon/eas-cli
+        if: steps.release.outputs.should_publish == 'true' && steps.npm.outputs.already_published != 'true'
+        working-directory: packages/eas-cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          npm publish --access public --ignore-scripts
