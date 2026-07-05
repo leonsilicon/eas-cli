@@ -147,7 +147,13 @@ jobs:
         working-directory: packages/eas-cli
         run: npm pack --dry-run --ignore-scripts
 
-      - name: Verify npm authentication
+      - name: Setup Node for npm publish
+        if: steps.release.outputs.should_publish == 'true' && steps.npm.outputs.already_published != 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Verify npm token fallback
         if: steps.release.outputs.should_publish == 'true' && steps.npm.outputs.already_published != 'true'
         working-directory: packages/eas-cli
         env:
@@ -155,8 +161,8 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
-            echo "::error::NPM_TOKEN is empty. Add an npm automation token as a GitHub Actions secret named NPM_TOKEN."
-            exit 1
+            echo "NPM_TOKEN is empty. Publish will rely on npm trusted publishing via GitHub OIDC."
+            exit 0
           fi
 
           {
@@ -192,6 +198,18 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
+          rm -f ~/.npmrc
+
+          if npm publish --access public --ignore-scripts --provenance; then
+            exit 0
+          fi
+
+          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "::error::npm trusted publishing failed and NPM_TOKEN is empty. Configure @leonsilicon/eas-cli trusted publishing for leonsilicon/eas-cli/.github/workflows/publish-leonsilicon-eas-cli.yml, or set NPM_TOKEN to a granular access token with read/write package access and bypass 2FA enabled."
+            exit 1
+          fi
+
+          echo "npm trusted publishing failed; retrying with NPM_TOKEN."
           {
             echo "@leonsilicon:registry=https://registry.npmjs.org/"
             echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}"
