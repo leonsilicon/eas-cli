@@ -139,6 +139,11 @@ jobs:
             ...(packageJson.publishConfig ?? {}),
             access: 'public',
           };
+          packageJson.repository = {
+            ...(packageJson.repository ?? {}),
+            type: 'git',
+            url: 'git+https://github.com/leonsilicon/eas-cli.git',
+          };
           fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
           NODE
 
